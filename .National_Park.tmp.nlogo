@@ -3,10 +3,19 @@ globals [
   attraction-distance
   tourists-in-each-iteration
 
+  cleaner-base-speed
+  cleaner-wage
+
+  tourists-add-wave
 ]
 
 patches-own [
   attraction?
+  clean?
+]
+
+turtles-own [
+  moving-speed
 ]
 
 to setup
@@ -22,6 +31,7 @@ to setup-globals
   set attraction-nums 15
   set attraction-distance 15
   set tourists-in-each-iteration 30
+  set tourists-add-wave 0
 end
 
 
@@ -58,6 +68,7 @@ end
 
 to go
   update-tourists
+  add-new-tourists
 end
 
 to setup-colors
@@ -68,12 +79,29 @@ to setup-colors
 end
 
 to update-tourists
+  ask turtles [
+    move
+  ]
+end
 
-  crt tourists-in-each-iteration
+to move
+  rt random-float 360
+  fd 10
+end
+
+to add-new-tourists
+
+  if tourists-add-wave < tourist-wave
   [
-    setxy random-xcor random-ycor
-    set shape "person"
-    set color white
+    crt tourists-in-each-iteration
+    [
+      setxy random-xcor random-ycor
+      set shape "person"
+      set color white
+      set moving-speed  + random 2
+    ]
+
+    set tourists-add-wave tourists-add-wave + 1
   ]
 
 end
@@ -130,6 +158,38 @@ BUTTON
 NIL
 go
 NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+SLIDER
+19
+284
+191
+317
+tourist-wave
+tourist-wave
+0
+100
+1.0
+1
+1
+NIL
+HORIZONTAL
+
+BUTTON
+53
+239
+135
+272
+auto-go
+go
+T
 1
 T
 OBSERVER
