@@ -15,27 +15,40 @@ patches-own [
 ]
 
 turtles-own [
+  visited-attractions
+
   moving-speed
+  moral-rate    ;; to determine how unlikey that this tourist will
+  time-spent    ;; number of steps that the tourist already spent in our national park
+  duration      ;; time that the tourist planning to spend in our national park
 ]
 
 to setup
   clear-all
   setup-globals
-  setup-attractions
+  setup-patches
   setup-colors
   reset-ticks
 end
 
 
 to setup-globals
-  set attraction-nums 15
+  set attraction-nums 20
   set attraction-distance 15
   set tourists-in-each-iteration 30
   set tourists-add-wave 0
 end
 
 
-to setup-attractions
+to setup-patches
+
+  ask patches
+  [
+    set clean? true
+    set attraction? false
+  ]
+
+  ;; setup the attraction pathces
   let curr-attraction 0
 
   while [ curr-attraction < attraction-nums ]
@@ -51,6 +64,7 @@ to setup-attractions
 
         let overlap patches with [ distance myself < attraction-distance ]
 
+        ;; two natrual attraction cannot overlap with each other
         if not any? overlap with [attraction? = true]
         [
           set attraction? true
@@ -64,11 +78,13 @@ to setup-attractions
 
     ]
   ]
+
 end
 
 to go
   update-tourists
   add-new-tourists
+  tick
 end
 
 to setup-colors
@@ -85,8 +101,57 @@ to update-tourists
 end
 
 to move
+  ;; remove tourist if they already spent enough time in the national park
+  if time-spent > duration
+  [
+    die
+  ]
+
+  ;; make the patch dirty depending on moral-rate
+  ;; note that attraction cell cannot become dirty
+  if [ attraction? ] of patch-here = false and (random-float 1 > moral-rate)
+  [
+    set pcolor yellow
+    ask patch-here
+    [
+      set clean? false
+    ]
+  ]
+
   rt random-float 360
-  fd 10
+  fd moving-speed
+
+  ;; if the destination is dirty, we skip it and do a BFS which
+  ;; select a nearest random point that is clean
+  if [ clean? ] of patch-here = false
+  [
+    let found? false
+    let d 1
+
+    while [found? = true]
+    [
+      let near patches with [ distance myself < d and attraction? = true ]
+
+      if near
+      [
+        move-to one-of near
+        set found? true
+      ]
+
+      set d d + 1
+    ]
+  ]
+
+
+  ;; attraction can be triggered if the tourist in the attraction cell or just near it
+  let near patches with [ distance myself < 2 ]
+
+  if [ attraction? ] of patch-here = true or any? near with [ attraction? = true ]
+  [
+    set visited-attractions visited-attractions + 1
+  ]
+
+  set time-spent time-spent + 1
 end
 
 to add-new-tourists
@@ -95,10 +160,35 @@ to add-new-tourists
   [
     crt tourists-in-each-iteration
     [
+      ;; set up initial location
       setxy random-xcor random-ycor
       set shape "person"
       set color white
-      set moving-speed 3 + 2 * random 2
+
+      ;; set up moving speed
+      set moving-speed 1 + 2 * random 3
+
+      ;; set up time related variables
+      set time-spent 0
+      set duration 3 + random 3
+
+      ;; set up figure for # of attraction that visited by the current tourist
+      set visited-attractions 0
+
+      ;; set up moral rate for the tourist
+      let moral random-normal mean-moral-rate 0.1
+
+      if moral > 1
+      [
+        set moral 1
+      ]
+
+      if moral < 0.5
+      [
+        set moral 0.5
+      ]
+
+      set moral-rate moral
     ]
 
     set tourists-add-wave tourists-add-wave + 1
@@ -176,7 +266,7 @@ tourist-wave
 tourist-wave
 0
 100
-1.0
+2.0
 1
 1
 NIL
@@ -198,6 +288,32 @@ NIL
 NIL
 NIL
 1
+
+MONITOR
+310
+945
+434
+990
+visited attractions
+sum [visited-attractions] of turtles
+17
+1
+11
+
+SLIDER
+18
+350
+190
+383
+mean-moral-rate
+mean-moral-rate
+0.7
+1
+0.7
+0.01
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
