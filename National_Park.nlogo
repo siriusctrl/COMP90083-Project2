@@ -1,44 +1,59 @@
 globals [
-  attraction-nums
+  attraction-nums  ;; the number of attraction clusters
   attraction-distance
   tourists-in-each-iteration
-
-  cleaner-base-speed
+  tourists-add-wave
   cleaner-wage
 
-  tourists-add-wave
+  park-attraction-level
+  revenue
+
+  ;; for plot
+  cumulative-considered-tourists  ;; # of tourists that considered come to the national park
+  cumulative-come-tourists        ;; # of tourists really present to the park
+
+  close?       ;; whether the national park are still open for new tourists
+  cleaning?    ;; whether the cleaners are cleaning the park currently
 ]
 
 patches-own [
   attraction?
-  clean?
+  clean?            ;; whehter the gird is clean
 ]
 
 turtles-own [
-  visited-attractions
-
-  moving-speed
+  ;; tourist own
+  visited-attractions  ;; number of times that our tourist visited attraction point
+  moving-speed  ;; the moving speed of tourist
   moral-rate    ;; to determine how unlikey that this tourist will
   time-spent    ;; number of steps that the tourist already spent in our national park
   duration      ;; time that the tourist planning to spend in our national park
+  tolerance     ;; The tolerant of the attractive point of national park
+  willingness-to-consume  ;; determine how likely people are welling to buy expensive tickets and extra services in the national park
+
+  ;; cleaner own
+  cleaner?
 ]
 
 to setup
   clear-all
   setup-globals
   setup-patches
+  setup-cleaners
   setup-colors
   reset-ticks
 end
-
 
 to setup-globals
   set attraction-nums 20
   set attraction-distance 15
   set tourists-in-each-iteration 30
   set tourists-add-wave 0
-end
+  set park-attraction-level 1
+  set revenue 0
 
+  set cumulative-considered-tourists 0
+end
 
 to setup-patches
 
@@ -75,16 +90,24 @@ to setup-patches
           set curr-attraction curr-attraction + 1
         ]
       ]
-
     ]
   ]
 
 end
 
-to go
-  update-tourists
-  add-new-tourists
-  tick
+to setup-cleaners
+  if number-of-cleaners > 0
+  [
+    crt number-of-cleaners
+    [
+      setxy random-pxcor random-pycor
+      set cleaner? true
+
+      set shape "person service"
+      set color red
+    ]
+  ]
+
 end
 
 to setup-colors
@@ -94,8 +117,81 @@ to setup-colors
   ]
 end
 
+to go
+  ;; update attraction based on the ratio of dirty patches
+  set park-attraction-level (count patches with [ clean? = true ] - count patches with [ attraction? = true ]) / (count patches with [ attraction? = false ])
+  update-tourists
+  update-cleaners
+
+  if ticks mod 4 = 0
+  [
+    add-new-tourists
+  ]
+
+  update-strategy
+
+  ;; when there is no tourist, stop the simulation
+  if count turtles with [cleaner? = false] = 0
+  [
+    stop
+  ]
+
+  tick
+end
+
+to update-strategy
+;  if strategy = "open-clean"
+;  [
+;    print "open-clean"
+;  ]
+
+  if strategy = "close-clean"
+  [
+    print "close-clean"
+  ]
+
+  if strategy = "mix-clean"
+  [
+    print "mix-clean"
+  ]
+end
+
+to update-cleaners
+  ask turtles with [cleaner? = true ]
+  [
+    if count patches with [clean? = false] > 0
+    [
+
+      let found? false
+      let d 3
+
+      while [found? = false]
+      [
+        let near one-of patches with [ distance myself < d and clean? = false ]
+
+        if near != nobody
+        [
+          move-to near
+          set found? true
+        ]
+
+        set d d + 1
+      ]
+
+      ask patches with [ distance myself < 3 and clean? = false]
+      [
+        set clean? true
+        set pcolor black
+      ]
+    ]
+  ]
+
+  set revenue revenue - number-of-cleaners * hourly-wages
+end
+
 to update-tourists
-  ask turtles [
+  ask turtles with [cleaner? = false]
+  [
     move
   ]
 end
@@ -128,17 +224,22 @@ to move
     let found? false
     let d 1
 
-    while [found? = true]
+    while [found? = false or d < 3]
     [
-      let near patches with [ distance myself < d and attraction? = true ]
+      let near one-of patches with [ distance myself < d and attraction? = true ]
 
-      if near
+      if near != nobody
       [
-        move-to one-of near
+        move-to near
         set found? true
       ]
 
       set d d + 1
+    ]
+
+    if d >= 3
+    [
+      die
     ]
   ]
 
@@ -149,6 +250,10 @@ to move
   if [ attraction? ] of patch-here = true or any? near with [ attraction? = true ]
   [
     set visited-attractions visited-attractions + 1
+
+    if (ticket-price / 80 < willingness-to-consume) [
+      set revenue (revenue + ticket-price * 1.25)
+    ]
   ]
 
   set time-spent time-spent + 1
@@ -158,12 +263,18 @@ to add-new-tourists
 
   if tourists-add-wave < tourist-wave
   [
+    set cumulative-considered-tourists cumulative-considered-tourists + tourists-in-each-iteration
+    set cumulative-come-tourists cumulative-come-tourists + tourists-in-each-iteration
+
     crt tourists-in-each-iteration
     [
-      ;; set up initial location
-      setxy random-xcor random-ycor
+      ;; set up initial location, cannot be init on attraction cluster and dirty cell
+      let init-locataion patches with [ clean? = true and attraction? = false ]
+      move-to one-of init-locataion
+
       set shape "person"
       set color white
+      set cleaner? false
 
       ;; set up moving speed
       set moving-speed 1 + 2 * random 3
@@ -172,28 +283,75 @@ to add-new-tourists
       set time-spent 0
       set duration 3 + random 3
 
+      set-moral
+      set-tolerance
+      set-income-level
+
       ;; set up figure for # of attraction that visited by the current tourist
       set visited-attractions 0
-
-      ;; set up moral rate for the tourist
-      let moral random-normal mean-moral-rate 0.1
-
-      if moral > 1
-      [
-        set moral 1
-      ]
-
-      if moral < 0.5
-      [
-        set moral 0.5
-      ]
-
-      set moral-rate moral
     ]
 
     set tourists-add-wave tourists-add-wave + 1
   ]
 
+
+  ask turtles with [ time-spent = 0 and cleaner? = false ]
+  [
+    ifelse (1 - tolerance > park-attraction-level) or (ticket-price / 100 > willingness-to-consume)
+    [
+      set cumulative-come-tourists cumulative-come-tourists - 1
+      die
+    ]
+    [
+      set revenue revenue + ticket-price
+    ]
+  ]
+
+end
+
+to set-moral
+  ;; set up moral rate for the tourist
+  let moral random-normal mean-moral 0.1
+
+  if moral > 1
+  [
+    set moral 1
+  ]
+
+  if moral < 0.5
+  [
+    set moral 0.5
+  ]
+
+  set moral-rate moral
+end
+
+to set-tolerance
+  set tolerance random-normal mean-tolerance 0.05
+
+  if tolerance < 0.01
+  [
+    set tolerance 0.01
+  ]
+
+  if tolerance > 0.35
+  [
+    set tolerance 0.35
+  ]
+end
+
+to set-income-level
+  set willingness-to-consume random-normal mean-willingness-to-consume 0.1
+
+  if willingness-to-consume > 0.9
+  [
+    set willingness-to-consume 0.9
+  ]
+
+  if willingness-to-consume < 0.1
+  [
+    set willingness-to-consume 0.1
+  ]
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -220,7 +378,7 @@ GRAPHICS-WINDOW
 0
 0
 1
-ticks
+hours
 30.0
 
 BUTTON
@@ -258,15 +416,15 @@ NIL
 1
 
 SLIDER
-19
-284
-191
-317
+18
+298
+190
+331
 tourist-wave
 tourist-wave
 0
 100
-2.0
+100.0
 1
 1
 NIL
@@ -289,24 +447,13 @@ NIL
 NIL
 1
 
-MONITOR
-310
-945
-434
-990
-visited attractions
-sum [visited-attractions] of turtles
-17
-1
-11
-
 SLIDER
-18
-350
-190
-383
-mean-moral-rate
-mean-moral-rate
+16
+347
+188
+380
+mean-moral
+mean-moral
 0.7
 1
 0.7
@@ -314,6 +461,183 @@ mean-moral-rate
 1
 NIL
 HORIZONTAL
+
+PLOT
+5
+520
+205
+670
+# of visited attraction
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot sum [visited-attractions] of turtles"
+
+SLIDER
+17
+400
+189
+433
+mean-tolerance
+mean-tolerance
+0.01
+0.2
+0.1
+0.01
+1
+NIL
+HORIZONTAL
+
+PLOT
+6
+694
+206
+844
+Attraction Level
+NIL
+NIL
+0.0
+10.0
+0.0
+1.0
+true
+false
+"" ""
+PENS
+"attraction level" 1.0 0 -16777216 true "" "plot park-attraction-level"
+
+PLOT
+6
+871
+225
+1037
+# tourists
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -2674135 true "" "plot cumulative-considered-tourists"
+"pen-1" 1.0 0 -13345367 true "" "plot cumulative-come-tourists"
+
+PLOT
+275
+872
+488
+1038
+# of Real time tourists
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -5825686 true "" "plot tourists-in-each-iteration"
+"pen-1" 1.0 0 -13791810 true "" "plot count turtles with [ time-spent = 0 and cleaner? = false ]"
+
+SLIDER
+16
+453
+191
+486
+ticket-price
+ticket-price
+20
+100
+40.0
+1
+1
+NIL
+HORIZONTAL
+
+PLOT
+536
+871
+758
+1037
+revenue
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot revenue"
+
+SLIDER
+1037
+116
+1251
+149
+mean-willingness-to-consume
+mean-willingness-to-consume
+0.1
+0.8
+0.5
+0.01
+1
+NIL
+HORIZONTAL
+
+SLIDER
+1042
+181
+1249
+214
+number-of-cleaners
+number-of-cleaners
+0
+100
+4.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+1043
+253
+1249
+286
+hourly-wages
+hourly-wages
+20
+50
+30.0
+1
+1
+NIL
+HORIZONTAL
+
+CHOOSER
+1049
+334
+1187
+379
+strategy
+strategy
+"open-clean" "close-clean" "mixed-clean"
+0
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -531,6 +855,26 @@ Polygon -7500403 true true 105 90 120 195 90 285 105 300 135 300 150 225 165 300
 Rectangle -7500403 true true 127 79 172 94
 Polygon -7500403 true true 195 90 240 150 225 180 165 105
 Polygon -7500403 true true 105 90 60 150 75 180 135 105
+
+person service
+false
+0
+Polygon -7500403 true true 180 195 120 195 90 285 105 300 135 300 150 225 165 300 195 300 210 285
+Polygon -1 true false 120 90 105 90 60 195 90 210 120 150 120 195 180 195 180 150 210 210 240 195 195 90 180 90 165 105 150 165 135 105 120 90
+Polygon -1 true false 123 90 149 141 177 90
+Rectangle -7500403 true true 123 76 176 92
+Circle -7500403 true true 110 5 80
+Line -13345367 false 121 90 194 90
+Line -16777216 false 148 143 150 196
+Rectangle -16777216 true false 116 186 182 198
+Circle -1 true false 152 143 9
+Circle -1 true false 152 166 9
+Rectangle -16777216 true false 179 164 183 186
+Polygon -2674135 true false 180 90 195 90 183 160 180 195 150 195 150 135 180 90
+Polygon -2674135 true false 120 90 105 90 114 161 120 195 150 195 150 135 120 90
+Polygon -2674135 true false 155 91 128 77 128 101
+Rectangle -16777216 true false 118 129 141 140
+Polygon -2674135 true false 145 91 172 77 172 101
 
 plant
 false
