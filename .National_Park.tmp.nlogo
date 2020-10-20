@@ -8,12 +8,19 @@ globals [
   park-attraction-level
   revenue
 
+  tolerance-list
+  tolerance-mean-prior
+  tolerance-var-prior
+
+  tolerance-mean-estimation
+  tolerance-var-estimation
+
   ;; for plot
   cumulative-considered-tourists  ;; # of tourists that considered come to the national park
   cumulative-come-tourists        ;; # of tourists really present to the park
 
   close?       ;; whether the national park are still open for new tourists
-
+  cleaning?    ;; whether the cleaners are cleaning the park currently
 ]
 
 patches-own [
@@ -23,13 +30,13 @@ patches-own [
 
 turtles-own [
   ;; tourist own
-  visited-attractions  ;; number of times that our tourist visited attraction point
-  moving-speed  ;; the moving speed of tourist
-  moral-rate    ;; to determine how unlikey that this tourist will
-  time-spent    ;; number of steps that the tourist already spent in our national park
-  duration      ;; time that the tourist planning to spend in our national park
-  tolerance     ;; The tolerant of the attractive point of national park
-  willingness-to-consume  ;; determine how likely people are welling to buy expensive tickets and extra services in the national park
+  visited-attractions  ;; Number of times that our tourist visited attraction point
+  moving-speed  ;; The moving speed of tourist
+  morality-rate    ;; To determine how unlikey that a tourist will turn an clean cell into dirty
+  time-spent    ;; Number of steps that the tourist already spent in our national park
+  duration      ;; Time that the tourist planning to spend in our national park
+  tolerance     ;; determine whether the tourist will present in the national park if they planning to come. If tolerance is lower than 1 - attraction level, the tourist may not present.
+  willingness-to-consume  ;; Determine how likely people are welling to buy expensive tickets and extra services in the national park
 
   ;; cleaner own
   cleaner?
@@ -51,6 +58,12 @@ to setup-globals
   set tourists-add-wave 0
   set park-attraction-level 1
   set revenue 0
+
+  set tolerance-mean-prior 0
+  set tolerance-var-prior 0.05
+  set tolerance-list []
+  set tolerance-mean-estimation tolerance-mean-prior
+  set tolerance-mean-estimation tolerance-var-prior
 
   set cumulative-considered-tourists 0
 end
@@ -79,7 +92,7 @@ to setup-patches
 
         let overlap patches with [ distance myself < attraction-distance ]
 
-        ;; two natrual attraction cannot overlap with each other
+        ;; two natrual attraction cannot overlap with each other for a certain range
         if not any? overlap with [attraction? = true]
         [
           set attraction? true
@@ -126,6 +139,7 @@ to go
   if ticks mod 4 = 0
   [
     add-new-tourists
+    update-belief
   ]
 
   update-strategy
@@ -137,6 +151,31 @@ to go
   ]
 
   tick
+end
+
+to update-belief
+  update-tolerance
+end
+
+to update-tolerance
+  let sample-var variance tolerance-list
+  let sample-mean mean tolerance-list
+
+
+;  set tolerance-var-estimation 1 / ((1 / tolerance-var-prior) * (n / sample-var))
+;  set tolerance-mean-estimation tolerance-var-estimation * (tolerance-mean-prior / (tolerance-var-prior ^ 2) + (sum tolerance-list) / (sample-var ^ 2))
+
+  let d sample-var ^ 2 + tolerance-var-prior ^ 2
+
+  set tolerance-var-estimation sample-var ^ 2 * tolerance-var-prior ^ 2 / d
+  set tolerance-mean-estimation ((sample-var ^ 2) * sample-mean + (tolerance-var-prior ^ 2) * tolerance-mean-prior) / d
+
+  print tolerance-mean-estimation
+
+  set tolerance-var-prior tolerance-var-estimation
+  set tolerance-mean-prior tolerance-mean-estimation
+  set tolerance-list []
+
 end
 
 to update-strategy
@@ -203,9 +242,9 @@ to move
     die
   ]
 
-  ;; make the patch dirty depending on moral-rate
+  ;; make the patch dirty depending on morality-rate
   ;; note that attraction cell cannot become dirty
-  if [ attraction? ] of patch-here = false and (random-float 1 > moral-rate)
+  if [ attraction? ] of patch-here = false and (random-float 1 > morality-rate)
   [
     set pcolor yellow
     ask patch-here
@@ -285,7 +324,7 @@ to add-new-tourists
 
       set-moral
       set-tolerance
-      set-income-level
+      set-willingness
 
       ;; set up figure for # of attraction that visited by the current tourist
       set visited-attractions 0
@@ -304,6 +343,8 @@ to add-new-tourists
     ]
     [
       set revenue revenue + ticket-price
+      ;; add the coming tourist's tolerance to our known collection
+      set tolerance-list lput tolerance tolerance-list
     ]
   ]
 
@@ -323,7 +364,7 @@ to set-moral
     set moral 0.5
   ]
 
-  set moral-rate moral
+  set morality-rate moral
 end
 
 to set-tolerance
@@ -340,7 +381,7 @@ to set-tolerance
   ]
 end
 
-to set-income-level
+to set-willingness
   set willingness-to-consume random-normal mean-willingness-to-consume 0.1
 
   if willingness-to-consume > 0.9
@@ -489,7 +530,7 @@ mean-tolerance
 mean-tolerance
 0.01
 0.2
-0.1
+0.15
 0.01
 1
 NIL
@@ -608,7 +649,7 @@ number-of-cleaners
 number-of-cleaners
 0
 100
-4.0
+8.0
 1
 1
 NIL
