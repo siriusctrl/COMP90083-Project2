@@ -145,16 +145,21 @@ to go
     update-cleaners
   ]
 
-  if (ticks mod 4 = 0) and (not close?)
+  if ticks mod 4 = 0
   [
-    add-new-tourists
-    update-belief
+    if (not close?)
+    [
+      add-new-tourists
+      update-belief
+    ]
+
+    set tourists-add-wave tourists-add-wave + 1
   ]
 
   update-strategy
 
   ;; when there is no tourist, stop the simulation
-  if count turtles with [cleaner? = false] = 0
+  if (count turtles with [cleaner? = false] = 0) and tourists-add-wave >= tourist-wave
   [
     stop
   ]
@@ -198,18 +203,58 @@ to update-strategy
 
   if strategy = "close-clean"
   [
+    ifelse close? = false
+    [
+      if whether-close
+      [
+        set close? true
+        set cleaning? true
 
+        setup-cleaners
+      ]
+    ]
+    [
+      ;; we cleaned all the rubbish
+      if count patches with [clean? = false] = 0
+      [
+        ask turtles with [clean? = true]
+        [
+          die
+        ]
+
+        set close? false
+        set cleaning? false
+      ]
+    ]
   ]
 
-  if strategy = "mix-clean"
+  if strategy = "mixed-clean"
   [
-    print "mix-clean"
+    ifelse close? = false
+    [
+      if whether-close
+      [
+        set close? true
+        set cleaning? true
+      ]
+    ]
+    [
+      if count patches with [clean? = false] = 0
+      [
+        set close? false
+        set cleaning? true
+      ]
+    ]
   ]
 end
 
+;; report true if we think it is the right time to close the park
 to-report whether-close
+  if ticks < 10
+  [report false]
+
 ;  1 - park-attraction-level > tolerance
-  ifelse 1 - park-attraction-level > tolerance-mean-estimation
+  ifelse 1 - park-attraction-level > (tolerance-mean-estimation - 0.05 * 0.842)
   [report true]
   [report false]
 end
@@ -231,15 +276,22 @@ to update-cleaners
         [
           move-to near
           set found? true
+
+          ask patches with [ distance myself < 3 and clean? = false]
+          [
+            set clean? true
+            set pcolor black
+          ]
+        ]
+
+        if d >= 8 and (strategy = "open-clean" or (strategy = "mixed-clean" and close? = false))
+        [
+          rt random-float 360
+          fd 5
+          set found? true
         ]
 
         set d d + 1
-      ]
-
-      ask patches with [ distance myself < 3 and clean? = false]
-      [
-        set clean? true
-        set pcolor black
       ]
     ]
   ]
@@ -253,6 +305,7 @@ to update-tourists
     move
   ]
 end
+
 
 to move
   ;; remove tourist if they already spent enough time in the national park
@@ -349,21 +402,18 @@ to add-new-tourists
       set visited-attractions 0
     ]
 
-    set tourists-add-wave tourists-add-wave + 1
-  ]
-
-
-  ask turtles with [ time-spent = 0 and cleaner? = false ]
-  [
-    ifelse (1 - tolerance > park-attraction-level) or (ticket-price / 100 > willingness-to-consume)
+    ask turtles with [ time-spent = 0 and cleaner? = false ]
     [
-      set cumulative-come-tourists cumulative-come-tourists - 1
-      die
-    ]
-    [
-      set revenue revenue + ticket-price
-      ;; add the coming tourist's tolerance to our known collection
-      set tolerance-list lput tolerance tolerance-list
+      ifelse (1 - tolerance > park-attraction-level) or (ticket-price / 100 > willingness-to-consume)
+      [
+        set cumulative-come-tourists cumulative-come-tourists - 1
+        die
+      ]
+      [
+        set revenue revenue + ticket-price
+        ;; add the coming tourist's tolerance to our known collection
+        set tolerance-list lput tolerance tolerance-list
+      ]
     ]
   ]
 
@@ -516,7 +566,7 @@ mean-moral
 mean-moral
 0.7
 1
-0.7
+0.75
 0.01
 1
 NIL
@@ -549,7 +599,7 @@ mean-tolerance
 mean-tolerance
 0.01
 0.2
-0.15
+0.06
 0.01
 1
 NIL
@@ -668,7 +718,7 @@ number-of-cleaners
 number-of-cleaners
 0
 100
-7.0
+5.0
 1
 1
 NIL
@@ -697,7 +747,18 @@ CHOOSER
 strategy
 strategy
 "open-clean" "close-clean" "mixed-clean"
-2
+0
+
+MONITOR
+898
+952
+955
+997
+wave
+tourists-add-wave
+17
+1
+11
 
 @#$#@#$#@
 ## WHAT IS IT?
