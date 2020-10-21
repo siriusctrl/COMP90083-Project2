@@ -46,7 +46,10 @@ to setup
   clear-all
   setup-globals
   setup-patches
-  setup-cleaners
+
+  if (strategy != "close-clean")
+  [ setup-cleaners ]
+
   setup-colors
   reset-ticks
 end
@@ -58,6 +61,8 @@ to setup-globals
   set tourists-add-wave 0
   set park-attraction-level 1
   set revenue 0
+  set close? false
+  set cleaning? false
 
   set tolerance-mean-prior 0
   set tolerance-var-prior 0.05
@@ -132,11 +137,15 @@ end
 
 to go
   ;; update attraction based on the ratio of dirty patches
-  set park-attraction-level (count patches with [ clean? = true ] - count patches with [ attraction? = true ]) / (count patches with [ attraction? = false ])
+  update-attraction
   update-tourists
-  update-cleaners
 
-  if ticks mod 4 = 0
+  if (strategy != "close-clean") or (cleaning? = true)
+  [
+    update-cleaners
+  ]
+
+  if (ticks mod 4 = 0) and (not close?)
   [
     add-new-tourists
     update-belief
@@ -153,6 +162,13 @@ to go
   tick
 end
 
+to update-attraction
+  let proportion 3 * (1 - (count patches with [ clean? = true ] - count patches with [ attraction? = true ]) / (count patches with [ attraction? = false ]))
+  set park-attraction-level 1 - (e ^ (2 * proportion) - 1) / (e ^ (2 * proportion) + 1)
+  print (word "proportion level is: " proportion )
+  print (word "attraction level is: " park-attraction-level )
+end
+
 to update-belief
   update-tolerance
 end
@@ -160,7 +176,6 @@ end
 to update-tolerance
   let sample-var variance tolerance-list
   let sample-mean mean tolerance-list
-
 
 ;  set tolerance-var-estimation 1 / ((1 / tolerance-var-prior) * (n / sample-var))
 ;  set tolerance-mean-estimation tolerance-var-estimation * (tolerance-mean-prior / (tolerance-var-prior ^ 2) + (sum tolerance-list) / (sample-var ^ 2))
@@ -170,11 +185,8 @@ to update-tolerance
   set tolerance-var-estimation sample-var ^ 2 * tolerance-var-prior ^ 2 / d
   set tolerance-mean-estimation ((sample-var ^ 2) * sample-mean + (tolerance-var-prior ^ 2) * tolerance-mean-prior) / d
 
-  print tolerance-mean-estimation
-
   set tolerance-var-prior tolerance-var-estimation
   set tolerance-mean-prior tolerance-mean-estimation
-  set tolerance-list []
 
 end
 
@@ -186,13 +198,20 @@ to update-strategy
 
   if strategy = "close-clean"
   [
-    print "close-clean"
+
   ]
 
   if strategy = "mix-clean"
   [
     print "mix-clean"
   ]
+end
+
+to-report whether-close
+;  1 - park-attraction-level > tolerance
+  ifelse 1 - park-attraction-level > tolerance-mean-estimation
+  [report true]
+  [report false]
 end
 
 to update-cleaners
@@ -649,7 +668,7 @@ number-of-cleaners
 number-of-cleaners
 0
 100
-8.0
+7.0
 1
 1
 NIL
@@ -678,7 +697,7 @@ CHOOSER
 strategy
 strategy
 "open-clean" "close-clean" "mixed-clean"
-0
+2
 
 @#$#@#$#@
 ## WHAT IS IT?
