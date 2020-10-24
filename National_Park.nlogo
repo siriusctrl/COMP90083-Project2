@@ -1,52 +1,57 @@
 globals [
-  attraction-nums  ;; the number of attraction clusters
-  attraction-distance
-  tourists-in-each-iteration
-  tourists-add-wave
-  cleaner-wage
+  attraction-nums              ;; number of attraction clusters
+  attraction-distance          ;; distance between two attractions
+  tourists-in-each-wave   ;; number of tourists visted in each iteration
+  tourists-add-wave            ;; The wave of tourist that we already added in
+  cleaner-wage                 ;; hourly wage of cleaners
 
-  park-attraction-level
-  revenue
+  park-attraction-level        ;; attraction-level of the park, the higher the more likely people would like to come
+  revenue                      ;; revenue earned by the park the we use to measure how good are maintianing model is
 
-  tolerance-list
-  tolerance-mean-prior
-  tolerance-var-prior
+  ;; for caculation of tolerance estimation
+  tolerance-list               ;; a list stores tolerance of each tourist
+  tolerance-mean-prior         ;; prior claim to the mean of tolerance
+  tolerance-var-prior          ;; prior claim to the variance of tolerance
 
-  tolerance-mean-estimation
-  tolerance-var-estimation
+  ;; as a threshold for triggering strategy
+  tolerance-mean-estimation    ;; estimation for the mean of tolerance
+  tolerance-var-estimation     ;; estimation for the variance of tolerance
 
   ;; for plot
-  cumulative-considered-tourists  ;; # of tourists that considered come to the national park
-  cumulative-come-tourists        ;; # of tourists really present to the park
+  cumulative-considered-tourists        ;; number of tourists that considered come to the park
+  cumulative-come-tourists              ;; number of tourists really present to the park
 
-  close?       ;; whether the national park are still open for new tourists
+  ;; for some cleaning strategies
+  close?       ;; whether the park are still open for new tourists
   cleaning?    ;; whether the cleaners are cleaning the park currently
 ]
 
 patches-own [
-  attraction?
+  attraction?       ;; whehter the gird is attraction
   clean?            ;; whehter the gird is clean
 ]
 
 turtles-own [
   ;; tourist own
-  visited-attractions  ;; Number of times that our tourist visited attraction point
-  moving-speed  ;; The moving speed of tourist
-  morality-rate    ;; To determine how unlikey that a tourist will turn an clean cell into dirty
-  time-spent    ;; Number of steps that the tourist already spent in our national park
-  duration      ;; Time that the tourist planning to spend in our national park
-  tolerance     ;; determine whether the tourist will present in the national park if they planning to come. If tolerance is lower than 1 - attraction level, the tourist may not present.
-  willingness-to-consume  ;; Determine how likely people are welling to buy expensive tickets and extra services in the national park
+  visited-attractions       ;; number of times that our tourist visited attraction point
+  moving-speed              ;; moving speed of tourist
+  morality-rate             ;; to determine how unlikey that a tourist will turn an clean cell into dirty
+  time-spent                ;; number of steps that the tourist already spent in our park
+  duration                  ;; timing length that the tourist plan to stay in our park
+  tolerance                 ;; determine whether the tourist will present in the park if they planning to come. If tolerance is lower than 1 - attraction level, the tourist may not present.
+  willingness-to-consume    ;; determine how likely people are welling to buy expensive tickets and extra services in the park
 
   ;; cleaner own
   cleaner?
 ]
 
+;; setup everything that we need before the simulation start
 to setup
   clear-all
   setup-globals
   setup-patches
 
+  ;; only setup cleaner if strategy is open-clean or mixed-clean
   if (strategy != "close-clean")
   [ setup-cleaners ]
 
@@ -54,10 +59,11 @@ to setup
   reset-ticks
 end
 
+;; initilize all global varibales
 to setup-globals
   set attraction-nums 20
   set attraction-distance 15
-  set tourists-in-each-iteration 30
+  set tourists-in-each-wave 30
   set tourists-add-wave 0
   set park-attraction-level 1
   set revenue 0
@@ -73,6 +79,7 @@ to setup-globals
   set cumulative-considered-tourists 0
 end
 
+;; Initialise the park here
 to setup-patches
 
   ask patches
@@ -84,23 +91,25 @@ to setup-patches
   ;; setup the attraction pathces
   let curr-attraction 0
 
+  ;; create the number of attractions specified
   while [ curr-attraction < attraction-nums ]
   [
     let x random-pxcor
     let y random-pycor
 
+    ;; ensure all attraction can be displayed completely in the square grid
     if (x < (max-pxcor)) and (y < (max-pxcor)) and (x > (min-pxcor)) and (y > (min-pxcor))
     [
-
       ask patch x y
       [
-
         let overlap patches with [ distance myself < attraction-distance ]
 
-        ;; two natrual attraction cannot overlap with each other for a certain range
+        ;; two attractions cannot overlap with each other for a certain range
         if not any? overlap with [attraction? = true]
         [
           set attraction? true
+          ;; a attraction cluster are defined as a 3*3 grid, therefore
+          ;; we set its 8 neighors to attraction as well
           ask n-of 8 neighbors
           [
             set attraction? true
@@ -110,15 +119,16 @@ to setup-patches
       ]
     ]
   ]
-
 end
 
+;; initiate the inital position of cleaner and its dedicate shape
 to setup-cleaners
   if number-of-cleaners > 0
   [
+    ;; create cleaners
     crt number-of-cleaners
     [
-      setxy random-pxcor random-pycor
+      setxy random-pxcor random-pycor    ;; allocate cleaners randomly
       set cleaner? true
 
       set shape "person service"
@@ -128,6 +138,7 @@ to setup-cleaners
 
 end
 
+;; set colors for special patches
 to setup-colors
   ask patches with [attraction? = true]
   [
@@ -135,6 +146,7 @@ to setup-colors
   ]
 end
 
+;; The main update procedure for the model
 to go
   ;; update attraction based on the ratio of dirty patches
   update-attraction
@@ -145,6 +157,8 @@ to go
     update-cleaners
   ]
 
+  ;; we only consider to add new wave of tourists every 4 hours
+  ;; to reflect the real world case
   if ticks mod 4 = 0
   [
     if (not close?)
@@ -167,6 +181,7 @@ to go
   tick
 end
 
+;; update attraction level based on proportion
 to update-attraction
   let proportion 3 * (1 - (count patches with [ clean? = true ] - count patches with [ attraction? = true ]) / (count patches with [ attraction? = false ]))
   set park-attraction-level 1 - (e ^ (2 * proportion) - 1) / (e ^ (2 * proportion) + 1)
@@ -174,43 +189,38 @@ to update-attraction
   print (word "attraction level is: " park-attraction-level )
 end
 
+;; update our belief of few estimated variable
 to update-belief
   update-tolerance
 end
 
+;; update our estimation of local mean tolerance
 to update-tolerance
-  let sample-var variance tolerance-list
-  let sample-mean mean tolerance-list
-
-;  set tolerance-var-estimation 1 / ((1 / tolerance-var-prior) * (n / sample-var))
-;  set tolerance-mean-estimation tolerance-var-estimation * (tolerance-mean-prior / (tolerance-var-prior ^ 2) + (sum tolerance-list) / (sample-var ^ 2))
+  let sample-var variance tolerance-list   ;; caculating current variance of tolerance
+  let sample-mean mean tolerance-list      ;; caculating current mean of tolerance
 
   let d sample-var ^ 2 + tolerance-var-prior ^ 2
 
-  set tolerance-var-estimation sample-var ^ 2 * tolerance-var-prior ^ 2 / d
-  set tolerance-mean-estimation ((sample-var ^ 2) * sample-mean + (tolerance-var-prior ^ 2) * tolerance-mean-prior) / d
+  set tolerance-var-estimation sample-var ^ 2 * tolerance-var-prior ^ 2 / d                                                ;; estimate variance of tolerance
+  set tolerance-mean-estimation ((sample-var ^ 2) * sample-mean + (tolerance-var-prior ^ 2) * tolerance-mean-prior) / d    ;; estimate mean of tolerance
 
   set tolerance-var-prior tolerance-var-estimation
   set tolerance-mean-prior tolerance-mean-estimation
-
 end
 
+;; update our choosen strategy state in this procedure based on our belief
 to update-strategy
-;  if strategy = "open-clean"
-;  [
-;    print "open-clean"
-;  ]
-
+  ;; close-clean strategy
   if strategy = "close-clean"
   [
     ifelse close? = false
     [
-      if whether-close
+      if whether-close   ;; determine whether to close
       [
         set close? true
         set cleaning? true
 
-        setup-cleaners
+        setup-cleaners    ;; allocate cleaners
       ]
     ]
     [
@@ -219,7 +229,7 @@ to update-strategy
       [
         ask turtles with [clean? = true]
         [
-          die
+          die     ;; move out all cleaners
         ]
 
         set close? false
@@ -227,18 +237,19 @@ to update-strategy
       ]
     ]
   ]
-
+  ;; mixed-clean strategy
   if strategy = "mixed-clean"
   [
     ifelse close? = false
     [
-      if whether-close
+      if whether-close   ;; determine whether to close
       [
         set close? true
         set cleaning? true
       ]
     ]
     [
+      ;; close to clean all rubbish
       if count patches with [clean? = false] = 0
       [
         set close? false
@@ -253,30 +264,35 @@ to-report whether-close
   if ticks < 10
   [report false]
 
-  ;  1 - park-attraction-level > tolerance
   ifelse 1 - park-attraction-level > (tolerance-mean-estimation - 0.05 * 0.842)
   [report true]
   [report false]
 end
 
+;; update our cleaner state based on
+;; differnt cleaning strategy for differntn situation
 to update-cleaners
   ask turtles with [cleaner? = true ]
   [
+    ;; doing a BFS to find a dirty cell with specific range
     if count patches with [clean? = false] > 0
     [
 
       let found? false
-      let d 3
+      let d 3           ;; the distance that our cleaners can sensing currently
 
+      ;; searching for the rubbish nearby
       while [found? = false]
       [
         let near one-of patches with [ distance myself < d and clean? = false ]
 
+        ;; finds rubbish
         if near != nobody
         [
           move-to near
           set found? true
 
+          ;; clean rubbish nearby
           ask patches with [ distance myself < 3 and clean? = false]
           [
             set clean? true
@@ -284,18 +300,20 @@ to update-cleaners
           ]
         ]
 
+        ;; under open-clean strategy or mixed-clean strategy, the clean can only sensing the distance up to 8
         if d >= 8 and (strategy = "open-clean" or (strategy = "mixed-clean" and close? = false))
         [
           rt random-float 360
-          fd 5
+          fd 5                      ;; increase the farthest distance that clearners can arrive
           set found? true
         ]
 
-        set d d + 1
+        set d d + 1      ;; increase cleaning range
       ]
     ]
   ]
 
+  ;; pay our cleaners
   set revenue revenue - number-of-cleaners * hourly-wages
 end
 
@@ -306,9 +324,9 @@ to update-tourists
   ]
 end
 
-
+;; we update our non-cleaner turtles in this procedure
 to move
-  ;; remove tourist if they already spent enough time in the national park
+  ;; remove tourist if they already spent enough time in the park
   if time-spent > duration
   [
     die
@@ -348,6 +366,7 @@ to move
       set d d + 1
     ]
 
+    ;; if no clean cell within distance of d of the destination, we quit earlier
     if d >= 3
     [
       die
@@ -370,14 +389,16 @@ to move
   set time-spent time-spent + 1
 end
 
+;; The procedure we used to add new tourists
 to add-new-tourists
 
   if tourists-add-wave < tourist-wave
   [
-    set cumulative-considered-tourists cumulative-considered-tourists + tourists-in-each-iteration
-    set cumulative-come-tourists cumulative-come-tourists + tourists-in-each-iteration
+    set cumulative-considered-tourists cumulative-considered-tourists + tourists-in-each-wave
+    set cumulative-come-tourists cumulative-come-tourists + tourists-in-each-wave
 
-    crt tourists-in-each-iteration
+    ;; create tourists in each iteration
+    crt tourists-in-each-wave
     [
       ;; set up initial location, cannot be init on attraction cluster and dirty cell
       let init-locataion patches with [ clean? = true and attraction? = false ]
@@ -394,16 +415,18 @@ to add-new-tourists
       set time-spent 0
       set duration 3 + random 3
 
+      ;; set up moral, tolerance and willingness rate of each tourist
       set-moral
       set-tolerance
       set-willingness
 
-      ;; set up figure for # of attraction that visited by the current tourist
+      ;; set up figure for the number of attraction that visited by the current tourist
       set visited-attractions 0
     ]
 
     ask turtles with [ time-spent = 0 and cleaner? = false ]
     [
+      ;; determine whether new tourists come or not
       ifelse (1 - tolerance > park-attraction-level) or (ticket-price / 100 > willingness-to-consume)
       [
         set cumulative-come-tourists cumulative-come-tourists - 1
@@ -419,8 +442,9 @@ to add-new-tourists
 
 end
 
+;; set up moral rate for the tourist to determine the probabilities of throwing rubbish
 to set-moral
-  ;; set up moral rate for the tourist
+
   let moral random-normal mean-moral 0.1
 
   if moral > 1
@@ -436,28 +460,30 @@ to set-moral
   set morality-rate moral
 end
 
+;; set up tolerance rate for the tourist to determine whether they come/leave the park
 to set-tolerance
+
   set tolerance random-normal mean-tolerance 0.05
 
   if tolerance < 0.01
   [
     set tolerance 0.01
   ]
-
   if tolerance > 0.35
   [
     set tolerance 0.35
   ]
 end
 
+;; set up willingness-to-consume rate for the tourist to determine the probabilities of different tourists to consume in the park
 to set-willingness
+
   set willingness-to-consume random-normal mean-willingness-to-consume 0.1
 
   if willingness-to-consume > 0.9
   [
     set willingness-to-consume 0.9
   ]
-
   if willingness-to-consume < 0.1
   [
     set willingness-to-consume 0.1
@@ -643,10 +669,10 @@ PENS
 "pen-1" 1.0 0 -13345367 true "" "plot cumulative-come-tourists"
 
 PLOT
-275
-872
-488
-1038
+463
+871
+676
+1037
 # of Real time tourists
 NIL
 NIL
@@ -658,7 +684,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -5825686 true "" "plot tourists-in-each-iteration"
+"default" 1.0 0 -5825686 true "" "plot tourists-in-each-wave"
 "pen-1" 1.0 0 -13791810 true "" "plot count turtles with [ time-spent = 0 and cleaner? = false ]"
 
 SLIDER
@@ -677,10 +703,10 @@ NIL
 HORIZONTAL
 
 PLOT
-536
-871
-758
-1037
+716
+872
+938
+1038
 revenue
 NIL
 NIL
@@ -750,15 +776,33 @@ strategy
 0
 
 MONITOR
-898
-952
-955
-997
+1009
+946
+1066
+991
 wave
 tourists-add-wave
 17
 1
 11
+
+PLOT
+238
+871
+450
+1039
+proportion of coming tourists
+NIL
+NIL
+0.0
+10.0
+0.0
+1.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot cumulative-come-tourists / (cumulative-considered-tourists + 1)"
 
 @#$#@#$#@
 ## WHAT IS IT?
