@@ -3,7 +3,6 @@ globals [
   attraction-distance          ;; distance between two attractions
   tourists-in-each-wave   ;; number of tourists visted in each iteration
   tourists-add-wave            ;; The wave of tourist that we already added in
-  cleaner-wage                 ;; hourly wage of cleaners
 
   park-attraction-level        ;; attraction-level of the park, the higher the more likely people would like to come
   revenue                      ;; revenue earned by the park the we use to measure how good are maintianing model is
@@ -743,8 +742,8 @@ SLIDER
 number-of-cleaners
 number-of-cleaners
 0
-100
-5.0
+30
+30.0
 1
 1
 NIL
