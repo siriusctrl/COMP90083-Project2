@@ -157,7 +157,7 @@ to go
   ]
   [
     ; the cost for on-call for close-clean strategy
-    set revenue revenue - 0.01 * hourly-wages * number-of-cleaners
+    set revenue revenue - 0.021 * hourly-wages * number-of-cleaners
   ]
 
 
