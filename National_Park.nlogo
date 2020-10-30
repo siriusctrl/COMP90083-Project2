@@ -602,7 +602,7 @@ mean-moral
 mean-moral
 0.7
 1
-0.7
+0.9
 0.01
 1
 NIL
@@ -635,7 +635,7 @@ mean-tolerance
 mean-tolerance
 0.01
 0.2
-0.2
+0.15
 0.01
 1
 NIL
@@ -706,7 +706,7 @@ ticket-price
 ticket-price
 20
 100
-20.0
+40.0
 1
 1
 NIL
@@ -739,7 +739,7 @@ mean-willingness-to-consume
 mean-willingness-to-consume
 0.1
 0.8
-0.2
+0.6
 0.01
 1
 NIL
